@@ -11,7 +11,8 @@ import {
   map,
   combineLatest,
   delay,
-  last,
+  tap,
+  retry,
 } from 'rxjs';
 
 @Component({
@@ -36,6 +37,8 @@ export class AppComponent {
       .pipe(
         debounceTime(300),
         filter((term) => term.length >= 3),
+        tap((term) => console.log(`Initial search for: ${term}`)),
+
         switchMap((term) =>
           combineLatest([this.fakeApiCall(term), this.fetchData(term)]).pipe(
             map(([simpleSearchResults, combinedData]) => {
@@ -48,9 +51,11 @@ export class AppComponent {
               this.error = 'Search failed';
               this.loading = false;
               return of({ simpleSearch: [], combined: [] });
-            })
+            }),
+            tap((results) => console.log('Final results:', results))
           )
-        )
+        ),
+        tap(() => console.log('Search complete'))
       )
       .subscribe((results) => {
         this.searchResults = results.simpleSearch;
@@ -65,26 +70,30 @@ export class AppComponent {
     this.searchSubject.next(event.target.value);
   }
 
+  // fakeApiCall(term: string) {
+  //   const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${term}`;
+  //   return this.http.get(url).pipe(
+  //     map((response: any) => {
+  //       if (response && response[0] && response[0].meanings) {
+  //         const meanings = response[0].meanings
+  //           .map(
+  //             (meaning: any) =>
+  //               `${meaning.partOfSpeech}: ${meaning.definitions
+  //                 .map((definition: any) => definition.definition)
+  //                 .join(', ')}`
+  //           )
+  //           .join('; ');
+  //         return [`${term}: Meanings - ${meanings}`];
+  //       } else {
+  //         throw new Error('No meanings found');
+  //       }
+  //     }),
+  //     catchError(() => of([`No meanings found for "${term}"`]))
+  //   );
+  // }
+
   fakeApiCall(term: string) {
-    const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${term}`;
-    return this.http.get(url).pipe(
-      map((response: any) => {
-        if (response && response[0] && response[0].meanings) {
-          const meanings = response[0].meanings
-            .map(
-              (meaning: any) =>
-                `${meaning.partOfSpeech}: ${meaning.definitions
-                  .map((definition: any) => definition.definition)
-                  .join(', ')}`
-            )
-            .join('; ');
-          return [`${term}: Meanings - ${meanings}`];
-        } else {
-          throw new Error('No meanings found');
-        }
-      }),
-      catchError(() => of([`No meanings found for "${term}"`]))
-    );
+    return of([`${term} result 1`, `${term} result 2`]).pipe(delay(1000));
   }
 
   fetchData(term: string) {
@@ -93,6 +102,7 @@ export class AppComponent {
         `https://dummyjson.com/users/search?q=${term}`
       )
       .pipe(
+        tap(() => console.log(`Fetching user details for: ${term}`)),
         map((response) => {
           if (response.users.length === 0) {
             throw new Error('No users found');
@@ -100,6 +110,11 @@ export class AppComponent {
           return response.users
             .map((user) => user.firstName + ' ' + user.lastName)
             .join(', ');
+        }),
+        retry(3),
+        tap({
+          next: () => console.log('User details fetched successfully'),
+          error: () => console.log('Retry fetching user details'),
         }),
         catchError(() => of('No users found'))
       );
@@ -109,11 +124,17 @@ export class AppComponent {
         `https://dummyjson.com/posts/search?q=${term}`
       )
       .pipe(
+        tap(() => console.log(`Fetching posts for: ${term}`)),
         map((response) => {
           if (response.posts.length === 0) {
             throw new Error('No posts found');
           }
           return response.posts.map((post) => post.title).join(', ');
+        }),
+        retry(2),
+        tap({
+          next: () => console.log('Posts fetched successfully'),
+          error: () => console.log('Retry fetching posts'),
         }),
         catchError(() => of('No posts found'))
       );
